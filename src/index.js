@@ -15,26 +15,29 @@ function checksExistsUserAccount(request, response, next) {
 
   var isValidUser = users.some(user => user.username === username);
 
-  if(!isValidUser){
-    return response.status(400).json({ error : "User not found!" });
+  if (!isValidUser) {
+    return response.status(400).json({ error: "User not found!" });
   }
 
   request.username = username;
   return next();
 }
 
-function dateFormat(dateInText){
+function verifyIfTodoExists(request, response, next) {
+  const { id } = request.params;
+  const { username } = request;
 
-  if(!/\d{2}\/\d{2}\/\d{4}$/.test(dateInText)){
-    return response
-    .status(400)
-    .json({ 
-      title: "Não foi possível criar tarefa",
-      reason: "Formato de data inválido. Formato válido: dd/MM/aaaa" 
-    });
+  const user = users.find(user => user.username === username);
+  const todo = user.todos.find(todo => todo.id === id);
+
+  if(!todo){
+    return response.status(404).json({ error: "Tarefa não encontrada!" });
   }
 
-  return new Date(...dateInText.split('/').reverse().map((item, index) => item - index % 2));
+  request.todo = todo;
+  request.user = user;
+
+  return next();
 }
 
 app.post('/users', (request, response) => {
@@ -42,10 +45,14 @@ app.post('/users', (request, response) => {
 
   const user = {
     id: uuidv4(),
-    name, 
+    name,
     username,
     todos: []
-   };
+  };
+
+  if (users.some(user => user.username === username)) {
+    return response.status(400).json({ error: true });
+  }
 
   users.push(user);
 
@@ -64,13 +71,12 @@ app.post('/todos', checksExistsUserAccount, (request, response) => {
   const { username } = request;
 
   const user = users.find(user => user.username === username);
-  const dateFormatted = dateFormat(deadline);
 
   const todo = {
     id: uuidv4(),
     title,
     done: false,
-    deadline: dateFormatted,
+    deadline: new Date(deadline),
     created_at: new Date()
   };
 
@@ -79,44 +85,30 @@ app.post('/todos', checksExistsUserAccount, (request, response) => {
   return response.status(201).json(todo);
 });
 
-app.put('/todos/:id', checksExistsUserAccount, (request, response) => {
-  const { username } = request;
+app.put('/todos/:id', checksExistsUserAccount, verifyIfTodoExists, (request, response) => {
   const { title, deadline } = request.body;
-  const { id } = request.params;
-
-  const user = users.find(user => user.username === username);
-  const todo = user.todos.find(t => t.id == id);
-
-  const formattedDate = dateFormat(deadline);
+  const { todo } = request;
 
   todo.title = title;
-  todo.deadline = formattedDate;
+  todo.deadline = new Date(deadline);
 
-  return response.status(201).send();
+  return response.status(201).json(todo);
 });
 
-app.patch('/todos/:id/done', checksExistsUserAccount, (request, response) => {
-  const { username } = request;
-  const { id } = request.params;
-
-  const user = users.find(user => user.username === username);
-  const todo = user.todos.find(t => t.id == id);
+app.patch('/todos/:id/done', checksExistsUserAccount, verifyIfTodoExists, (request, response) => {
+  const { todo } = request;
 
   todo.done = true;
 
-  return response.status(201).send();
+  return response.status(201).json(todo);
 });
 
-app.delete('/todos/:id', checksExistsUserAccount, (request, response) => {
-  const { username } = request;
-  const { id } = request.params;
-
-  const user = users.find(user => user.username === username);
-  const todo = user.todos.find(t => t.id == id);
+app.delete('/todos/:id', checksExistsUserAccount, verifyIfTodoExists, (request, response) => {
+  const { user, todo } = request;
 
   user.todos.splice(todo, 1);
 
-  return response.status(201).send();
+  return response.status(204).send();
 });
 
 module.exports = app;
